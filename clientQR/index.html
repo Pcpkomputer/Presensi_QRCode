@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html style="height:100%;width:100%;padding:0px;margin:0px;overflow: hidden">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Page Title</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" media="screen" href="main.css" />
+    <script src="main.js"></script>
+    <style>
+        table, th, td {
+    border: 1px solid black;
+    text-align: left;
+    }
+        .judulTable{
+            text-align: center;
+        }
+
+      
+      @keyframes example {
+   0% {
+       color:white;
+   }
+   50%{
+       color:white;
+   }
+   80%{
+       color:red;
+   }
+   100%{
+       color:red;
+   }
+}
+
+ .kuedip {
+  -webkit-animation-name: example; /* Safari 4.0 - 8.0 */
+  -webkit-animation-duration: 4s; /* Safari 4.0 - 8.0 */
+  animation-name: example;
+  animation-duration: 0.3s;
+  animation-iteration-count: infinite;
+}
+        
+
+    </style>
+</head>
+<body style="overflow:hidden;display:flex;padding:0px;margin:0px;height:100%">
+    <div style="width:90%;display:flex;justify-content: center;flex-direction: column;align-items: center;padding:20px;">
+        <div id="kodeQRstring" style="text-align: center;padding:25px;height: 30px;align-items: center;width:100%;justify-content: center;padding-top:40px;font-size: 70px;">
+            ******
+        </div>
+        <div style="height:100%;width:100%">
+            <div style="padding:60px;">
+                <img id="qrImage" style="width:100%" src="assets/placeholderQR.png">
+            </div>
+        </div>
+    </div>
+    <div style="width:100%;height:100%;display: flex;flex-direction: column;padding:20px;">
+        <div style="height:100%;margin-top:25px;overflow-y: scroll">
+                <table id="tabelPresensi" style="width: 100%">
+                        <tr class='judulTable'>
+                            <td>NIM</td>
+                            <td>Jam</td>
+                            <td>Nama</td>
+                        </tr>
+                       
+
+                         
+                    </table>
+        </div>
+        <div style="margin-bottom:100px;">
+            <div id="bottomText" style="border: 1px solid black;padding:7px;margin-right:20px;text-align: center">PRESENSI BELUM SIAP DIGUNAKAN</div>
+            <div style="margin-right:20px;"><button style="width:100%">Selesai (ESC)</button></div>
+
+        </div>
+       
+    </div>
+</body>
+<script>
+    const ipcRenderer=require('electron').ipcRenderer;
+
+    let qr='';
+    let clientId=makeid(3);
+
+     function makeid(length) {
+    var text = "";
+    var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+     for (var i = 0; i < length; i++)
+        text += possible.charAt(Math.floor(Math.random() * possible.length));
+
+        return text;
+    }
+
+
+    let wss=new WebSocket(`ws://localhost:8080?clientid=${clientId}&type=desktop`);
+
+    document.addEventListener('keydown',(e)=>{
+        e.preventDefault();
+        if(e.key==='Escape'){
+            alert('exit');
+        }
+    })
+
+    wss.onopen=function(){
+        qr=makeid(6);
+        document.querySelectorAll('#kodeQRstring')[0].innerText=qr;
+        ipcRenderer.send('QRstringToObjURL',{stringqr:qr});
+
+
+        ipcRenderer.on('sendDataURL',(err,args)=>{
+        document.querySelectorAll('#qrImage')[0].src=args.url;
+         })
+         
+        document.querySelectorAll('#bottomText')[0].innerText='PRESENSI SIAP DIGUNAKAN';
+
+        let refresh=setInterval(()=>{
+        qr=makeid(6);
+        document.querySelectorAll('#kodeQRstring')[0].innerText=qr;
+        ipcRenderer.send('QRstringToObjURL',{stringqr:qr});
+        },10000)
+    }
+
+
+    wss.onmessage=function(msg){
+        console.log(msg)
+        let parsed=JSON.parse(msg.data);
+        if(parsed.xhrType==='scannedQRfromMobile'){
+            if(parsed.qrCode===qr){
+                let sudahada=false;
+                document.querySelectorAll("#tabelPresensi tr").forEach((el)=>{
+                    if(el.querySelectorAll('th').length>0){
+                        if(el.querySelectorAll('th')[0].innerText===parsed.user.nim){
+                            sudahada=true;
+                        }
+                    }
+                })
+                
+                if(sudahada){
+                    document.querySelectorAll('#bottomText')[0].innerText='PRESENSI SUDAH DILAKUKAN';
+                    document.querySelectorAll('#bottomText')[0].style.color='red';
+                    document.querySelectorAll('#bottomText')[0].classList.add('kuedip');
+                    setTimeout(() => {
+                        document.querySelectorAll('#bottomText')[0].innerText='PRESENSI SIAP DILAKUKAN';
+                        document.querySelectorAll('#bottomText')[0].style.color='';
+                        document.querySelectorAll('#bottomText')[0].classList.remove('kuedip');
+                    }, 1000);
+                }
+                else{
+                    document.querySelectorAll("#tabelPresensi")[0].innerHTML= document.querySelectorAll("#tabelPresensi")[0].innerHTML+
+                     `  <tr>
+                            <th>${parsed.user.nim}</th>
+                            <th>${new Date().toLocaleTimeString()}</th>
+                            <th>${parsed.user.nama}</th>
+                        </tr>`;
+                    wss.send(JSON.stringify({xhrType:'sendSuccesLoad',nim:parsed.user.nim}));
+                }
+
+             
+            }
+            else{
+                wss.send(JSON.stringify({xhrType:'sendFailureLoad',nim:parsed.user.nim}));
+            }
+        }
+    }
+
+
+   
+        
+
+    
+</script>
+</html>
